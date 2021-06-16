@@ -33,15 +33,23 @@ impl Chip8 {
     }
 
     pub fn clock(&mut self) {
-        self.vram[0] = 1;
-        self.redraw=true;
+        for i in 0..self.vram.len() {
+            if i % 3 == 0 {
+                self.vram[i] = 1;
+            }
+        }
+        self.redraw = true;
     }
 
-    pub fn get_vram(&self) -> Vec<u8> {
-        self.vram.clone()
+    pub fn dump_vram(&self) -> &[u8] {
+        self.vram.as_slice()
     }
 
-    pub fn awaiting_redraw(&self) -> bool {
+    pub fn is_awaiting_redraw(&self) -> bool {
         self.redraw
+    }
+
+    pub fn fulfill_redraw(&mut self) {
+        self.redraw = false;
     }
 }
