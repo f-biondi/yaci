@@ -1,0 +1,9 @@
+[package]
+name = "yaci"
+version = "0.1.0"
+authors = ["Filippo Biondi <filippo.biondi@protonmail.ch>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
