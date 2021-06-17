@@ -1,11 +1,13 @@
+use std::fs;
+
 #[allow(dead_code)]
 pub struct Chip8 {
     opcode: u16,
     v: Vec<u8>,
     i: u16,
-    pc: u16,
+    pc: usize,
     stack: Vec<u16>,
-    sp: u16,
+    sp: usize,
     ram: Vec<u8>,
     vram: Vec<u8>,
     redraw: bool,
@@ -32,13 +34,41 @@ impl Chip8 {
         }
     }
 
-    pub fn clock(&mut self) {
-        for i in 0..self.vram.len() {
-            if i % 3 == 0 {
-                self.vram[i] = 1;
-            }
+    /// The method loads the default font from ram[0] to ram[80] and
+    /// the game rom from ram[512] onwards.
+
+    pub fn load_rom(&mut self, rom: &String) {
+        let char_table = vec![
+            0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+            0x20, 0x60, 0x20, 0x20, 0x70, // 1
+            0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+            0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+            0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+            0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+            0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+            0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+            0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+            0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+            0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+            0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+            0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+            0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+            0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+            0xF0, 0x80, 0xF0, 0x80, 0x80  // F
+        ];
+        for i in 0..char_table.len() {
+            self.ram[i] = char_table[i]
+        } 
+
+        let rom = fs::read(rom).expect("Cannot read rom file!");
+        for i in 0..rom.len() {
+            self.ram[0x200 + i] = rom[i];
         }
-        self.redraw = true;
+    }
+
+    pub fn clock(&mut self) {
+        self.opcode = (self.ram[self.pc] as u16) << 8 | (self.ram[self.pc+1] as u16);
+        println!("{:X}", self.opcode);
     }
 
     pub fn dump_vram(&self) -> &[u8] {
