@@ -90,17 +90,24 @@ impl Chip8 {
     fn decode_opcode(&mut self) {
         println!("{:X}", self.opcode);
         match self.opcode & 0xF000 {
-            0x0000 =>
-                match self.opcode & 0x000F {
-                    0x0 => self.screen_clear(),
-                    _ => self.subroutine_return(),
-                },
+            0x0000 => match self.opcode & 0x000F {
+                0x0 => self.screen_clear(),
+                _ => self.subroutine_return(),
+            },
             0x1000 => self.jump_to_address(),
             0x2000 => self.call_subroutine(),
             0x3000 => self.skip_if_vx(),
             0x4000 => self.skip_if_not_vx(),
             0x5000 => self.skip_if_vx_equals_vy(),
             0x6000 => self.set_vx(),
+            0x7000 => self.add_vx_no_carry(),
+            0x8000 => match self.opcode & 0x000F {
+                0x0 => self.set_vx_to_vy(), 
+                0x1 => self.set_vx_or_vy(), 
+                0x2 => self.set_vx_and_vy(), 
+                0x3 => self.set_vx_xor_vy(), 
+                _ => panic!("xd"),
+            },
             _ => panic!("Invalid opcode"),
         }
     }
@@ -127,15 +134,14 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    ///OPCODE: 1NNN
+    /// OPCODE: 1NNN
     ///
     /// The method jumps to the NNN address, pc is set to NNN
     fn jump_to_address(&mut self) {
         self.pc = self.opcode & 0x0FFF;
-        println!("{:X}", self.pc);
     }
 
-    ///OPCODE: 2NNN
+    /// OPCODE: 2NNN
     ///
     /// The method calls a subroutine at the address NNN by pushing pc to the stack and 
     /// setting pc equal to NNN
@@ -144,7 +150,7 @@ impl Chip8 {
         self.pc = self.opcode & 0x0FFF;
     }
 
-    ///OPCODE: 3XNN
+    /// OPCODE: 3XNN
     ///
     /// The method skips the next instruction if v[X] is equal to NN
     fn skip_if_vx(&mut self) {
@@ -154,7 +160,7 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    ///OPCODE: 4XNN
+    /// OPCODE: 4XNN
     ///
     /// The method skips the next instruction if v[X] is not equal to NN
     fn skip_if_not_vx(&mut self) {
@@ -164,7 +170,7 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    ///OPCODE: 5XY0
+    /// OPCODE: 5XY0
     ///
     /// The method skips the next instruction if v[X] is equal to v[y]
     fn skip_if_vx_equals_vy(&mut self) {
@@ -174,11 +180,51 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    ///OPCODE: 6XNN
+    /// OPCODE: 6XNN
     ///
-    /// The method set v[X] equal to NN
+    /// The method sets v[X] equal to NN
     fn set_vx(&mut self) {
         self.v[((self.opcode & 0x0F00) >> 8) as usize] = (self.opcode & 0x00FF) as u8;
+        self.pc += 2;
+    }
+
+    /// OPCODE: 7XNN
+    ///
+    /// The method adds NN to v[X] without setting the carry flag
+    fn add_vx_no_carry(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] += (self.opcode & 0x00FF) as u8;
+        self.pc += 2;
+    }
+
+    /// OPCODE: 8XY0
+    ///
+    /// The method sets v[X] equal to v[Y]
+    fn set_vx_to_vy(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] = self.v[((self.opcode & 0x00F0) >> 4) as usize];
+        self.pc += 2;
+    }
+
+    /// OPCODE: 8XY1
+    ///
+    /// The method sets v[X] equal to v[X] or v[Y] (bitwise)
+    fn set_vx_or_vy(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] |= self.v[((self.opcode & 0x00F0) >> 4) as usize];
+        self.pc += 2;
+    }
+
+    /// OPCODE: 8XY2
+    ///
+    /// The method sets v[X] equal to v[X] and v[Y] (bitwise)
+    fn set_vx_and_vy(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] &= self.v[((self.opcode & 0x00F0) >> 4) as usize];
+        self.pc += 2;
+    }
+
+    /// OPCODE: 8XY3
+    ///
+    /// The method sets v[X] equal to v[X] xor v[Y] (bitwise)
+    fn set_vx_xor_vy(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] ^= self.v[((self.opcode & 0x00F0) >> 4) as usize];
         self.pc += 2;
     }
 
