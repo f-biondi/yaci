@@ -25,7 +25,7 @@ async fn main() {
         //println!("FPS: {}", get_fps());
         system.clock();
         if system.is_awaiting_redraw() {
-            screen.redraw(system.dump_vram());
+            screen.redraw(system.dump_vmem());
             system.fulfill_redraw();
         }
         //handle input
