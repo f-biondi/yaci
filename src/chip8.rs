@@ -70,8 +70,7 @@ impl Chip8 {
     /// The method represent a cpu clock, it fetches the 2 byte opcode at pc
     /// mem location and calls the decode_opcode() method to decode it, the
     /// method then proceds decreasing the sound and delay timer by 1 if they have a value
-    /// greater than 0, if the sound timer have a value equal to one a beep is
-    /// reproduced
+    /// greater than 0, if the sound timer have a non zero value a beep is reproduced.
     pub fn clock(&mut self) {
         self.opcode = (self.mem[self.pc as usize] as u16) << 8 | (self.mem[(self.pc+1) as usize] as u16);
 
@@ -82,9 +81,7 @@ impl Chip8 {
         }
 
         if self.sound_t > 0 {
-            if self.sound_t == 1 {
-                println!("beep");
-            }
+            println!("beep");
             self.sound_t -= 1;
         }
     }
@@ -117,8 +114,23 @@ impl Chip8 {
             0x9000 => self.skip_if_vx_not_equals_vy(),
             0xA000 => self.set_i(),
             0xB000 => self.jump_to_v0_plus_nnn(),
-            0xC000 => self.rand_xor(),
+            0xC000 => self.rand_and(),
             0xD000 => self.draw(),
+            0xE000 => match self.opcode & 0x00FF {
+                0x9E => self.skip_if_pressed(),
+                _ => self.skip_if_not_pressed(),
+            },
+            0xF000 => match self.opcode & 0x00FF {
+                0x07 => self.set_vx_delay_t(),
+                0x0A => loop {},
+                0x15 => self.set_delay_t_vx(),
+                0x18 => self.set_sound_t_vx(),
+                0x1E => self.add_i_vx_no_carry(),
+                0x29 => self.set_i_to_font_address(),
+                0x33 => self.bcd(),
+                0x55 => self.dump_v0_to_vx(),
+                _ => self.fill_v0_to_vx(),
+            },
             _ => loop {},
         }
     }
@@ -348,12 +360,12 @@ impl Chip8 {
 
     /// OPCODE: CXNN
     ///
-    /// The method sets v[X] equal to a random number xor NN
-    fn rand_xor(&mut self) {
+    /// The method sets v[X] equal to a random number and NN
+    fn rand_and(&mut self) {
         let mut rng = rand::thread_rng();
         let x = ((self.opcode & 0x0F00) >> 8) as usize;
         let rand_u8 : u8 = rng.gen();
-        self.v[x] = rand_u8 ^ (self.opcode & 0x00FF) as u8;
+        self.v[x] = rand_u8 & (self.opcode & 0x00FF) as u8;
         self.pc += 2;
     }
 
@@ -387,6 +399,103 @@ impl Chip8 {
         self.pc += 2;
     }
 
+    /// OPCODE: EX9E
+    ///
+    /// The method skisps the next instruction if the key in v[X] is pressed
+    fn skip_if_pressed(&mut self) {
+        if self.keys[((self.opcode & 0x0F00) >> 8) as usize] == 1 {
+            self.pc += 2;
+        }
+        self.pc += 2;
+    }
+
+    /// OPCODE: EXA1
+    /// The method skisps the next instruction if the key in v[X] is not pressed
+    fn skip_if_not_pressed(&mut self) {
+        if self.keys[((self.opcode & 0x0F00) >> 8) as usize] == 0 {
+            self.pc += 2;
+        }
+        self.pc += 2;
+    }
+
+    /// OPCODE: FX07
+    ///
+    /// The method sets v[X] equal to the value of the delay timer
+    fn set_vx_delay_t(&mut self) {
+        self.v[((self.opcode & 0x0F00) >> 8) as usize] = self.delay_t;
+        self.pc += 2;
+    }
+
+    //todo
+
+    /// OPCODE: FX15
+    ///
+    /// The method sets the delay timer equal to v[X]
+    fn set_delay_t_vx(&mut self) {
+        self.delay_t = self.v[((self.opcode & 0x0F00) >> 8) as usize];
+        self.pc += 2;
+    }
+
+    /// OPCODE: FX18
+    ///
+    /// The method sets the sound timer equal to v[X]
+    fn set_sound_t_vx(&mut self) {
+        self.sound_t = self.v[((self.opcode & 0x0F00) >> 8) as usize];
+        self.pc += 2;
+    }
+
+    /// OPCODE: FX1E
+    ///
+    /// The method adds v[X] to i
+    fn add_i_vx_no_carry(&mut self) {
+        let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        self.i = self.i.wrapping_add(self.v[x] as u16);
+        self.pc += 2;
+    }
+
+    /// OPCODE: FX29
+    ///
+    /// The method sets i equal to sprite location of the character in X
+    fn set_i_to_font_address(&mut self) {
+        let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        self.i = (self.v[x] * 5) as u16;
+        self.pc += 2;
+    }
+
+    /// OPCODE: FX33
+    ///
+    /// The method takes the decimal representation of v[X], then places the hundreds digit in memory at
+    /// location in i, the tens digit at location i+1, and the ones digit at location i+2.
+    fn bcd(&mut self) {
+        let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        self.mem[self.i as usize] = self.v[x] / 100;
+        self.mem[(self.i + 1) as usize] = (self.v[x] % 100) / 10;
+        self.mem[(self.i + 2) as usize] = (self.v[x] % 100) % 10;
+        self.pc += 2;
+    }
+    
+    /// OPCODE: FX55
+    ///
+    /// The method stores the values of the registers from v[0] to v[x] from mem[i] onwards
+    fn dump_v0_to_vx(&mut self) {
+        let x = (self.opcode & 0x0F00) >> 8;
+        for r in 0..x+1 {
+            self.mem[(self.i + r) as usize] = self.v[r as usize];
+        }
+        self.pc += 2;
+    }
+    
+    /// OPCODE: FX65
+    ///
+    /// The method fills the registers from v[0] to v[X] with values from mem[i] onwards
+    fn fill_v0_to_vx(&mut self) {
+        let x = (self.opcode & 0x0F00) >> 8;
+        for r in 0..x+1 {
+            self.v[r as usize] = self.mem[(self.i + r) as usize];
+        }
+        self.pc += 2;
+    }
+    
     pub fn dump_vmem_line(&self, line_number: usize) -> &[u8] {
         self.vmem[line_number].as_slice()
     }
