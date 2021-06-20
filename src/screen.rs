@@ -21,30 +21,31 @@ impl Screen {
     }
 
     pub fn cam_init(&self) {
-        set_camera(&Camera2D {
-            rotation: 0.0,
-            zoom: Vec2::new(0.03, 0.03),
-            target: Vec2::new(
-                screen_width() / 2.0 - (self.width as f32) / 2.0,
-                screen_height() / 2.0 - (self.height as f32) / 2.0
-            ),
-            offset: Vec2::new(0.0, 0.0),
-            render_target: None
+        let camera : Camera2D = Camera2D::from_display_rect(Rect {
+            x: screen_width() / 2.0 - self.width as f32,
+            y: screen_height() / 2.0 - self.height as f32,
+            w: self.width as f32,
+            h: self.height as f32,
         });
+        set_camera(&camera);
     }
 
-    pub fn redraw(&mut self, pixels: &[u8]) {
-        for i in 0..pixels.len() {
+    pub fn redraw_line(&mut self, line_number: u32,  pixels: &[u8]) {
+        for i in 0..self.width {
             self.image.set_pixel(
-                (i % 64) as u32,
-                (i / 64) as u32,
-                match pixels[i] {
+                i as u32,
+                line_number,
+                match pixels[i as usize] {
                     1 => WHITE,
                     _ => BLACK,
                 },
             );
         }
         self.texture.update(&self.image);
+        self.draw();
+    }
+
+    pub fn draw(&self) {
         draw_texture(
             self.texture,
             screen_width() / 2.0 - self.width as f32, 
