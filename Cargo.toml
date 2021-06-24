@@ -8,5 +8,7 @@ edition = "2018"
 
 [dependencies]
 
-macroquad = "0.3.5"
 rand = "0.8.4"
+pixels = "0.4.0"
+winit = "0.25"
+winit_input_helper = "0.10"

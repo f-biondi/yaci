@@ -13,7 +13,8 @@ pub struct Chip8 {
     mem: Vec<u8>,
     vmem: Vec<Vec<u8>>,
     redraw: bool,
-    keys: Vec<u8>,
+    redraw_section: (usize, usize, usize, usize),
+    keys: Vec<bool>,
     delay_t: u8,
     sound_t: u8,
 }
@@ -29,7 +30,8 @@ impl Chip8 {
             mem: vec![0; 4096],
             vmem: vec![vec![0; 64]; 32],
             redraw: false,
-            keys: vec![0; 16],
+            redraw_section: (0, 0, 0, 0),
+            keys: vec![false; 16],
             delay_t: 0,
             sound_t: 0,
         }
@@ -76,18 +78,20 @@ impl Chip8 {
 
         self.decode_opcode(); 
 
+    }
+
+    pub fn clock_timer(&mut self) {
         if self.delay_t > 0 {
             self.delay_t -= 1;
         }
 
         if self.sound_t > 0 {
-            println!("beep");
+            //println!("beep");
             self.sound_t -= 1;
         }
     }
 
     fn decode_opcode(&mut self) {
-        println!("{:X}", self.opcode);
         match self.opcode & 0xF000 {
             0x0000 => match self.opcode & 0x000F {
                 0x0 => self.screen_clear(),
@@ -142,6 +146,7 @@ impl Chip8 {
     fn screen_clear(&mut self) {
         self.vmem = vec![vec![0; 64]; 32];
         self.redraw = true; 
+        self.redraw_section = (0, 0 , 32, 64);
         self.pc += 2;
     }
 
@@ -215,8 +220,24 @@ impl Chip8 {
     ///
     /// The method adds NN to v[X] without setting the carry flag
     fn add_vx_no_carry(&mut self) {
+        
+
         let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        let nn = (self.opcode & 0x00FF) as u16;
+        if x == 0x8 {
+            //println!("start_v[8]: {:X}", self.v[x]);
+        }
+        if x == 0x8 {
+            //println!("nn: {:X}", nn);
+        }
+        /*
         self.v[x] = self.v[x].wrapping_add((self.opcode & 0x00FF) as u8);
+        */
+        self.v[x] = (self.v[x] as u16 + nn) as u8;
+        if x == 0x8 {
+            //println!("end_v[8]: {:X}", self.v[x]);
+            //println!("=======");
+        }
         self.pc += 2;
     }
 
@@ -259,6 +280,7 @@ impl Chip8 {
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
 
+
         if self.v[x] > (0xFF - self.v[y]) {
             self.v[0xF] = 1;
         }
@@ -283,7 +305,6 @@ impl Chip8 {
         else {
             self.v[0xF] = 1;
         }
-
         self.v[x] = self.v[x].wrapping_sub(self.v[y]);
         self.pc += 2;
     }
@@ -355,7 +376,7 @@ impl Chip8 {
     ///
     /// The method jumps to v[0] plus NNN address
     fn jump_to_v0_plus_nnn(&mut self) {
-        self.pc = self.v[0] as u16 + (self.opcode & 0x0FFF) as u16;
+        self.pc = (self.v[0] as u16).wrapping_add((self.opcode & 0x0FFF) as u16);
     }
 
     /// OPCODE: CXNN
@@ -377,16 +398,17 @@ impl Chip8 {
     fn draw(&mut self) {
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
-        let height : u8 = (self.opcode & 0x000F) as u8;
+        let height : u16 = (self.opcode & 0x000F) as u16;
         self.v[0xF] = 0;
         self.redraw = true;
+        self.redraw_section = (self.v[y] as usize, self.v[x] as usize, height as usize, 8);
        
         for l in 0..height {
             let line_pixels = self.mem[(self.i + l as u16) as usize];
-            for c in 0u8..8u8 {
+            for c in 0u16..8u16 {
                 let pixel = (line_pixels & (0x80 / u8::pow(2, c as u32))) >> 7 - c;
-                let screen_y = ((self.v[y] + l) % 32) as usize;
-                let screen_x = ((self.v[x] + c) % 64) as usize;
+                let screen_y = ((self.v[y] as u16 + l) % 32) as usize;
+                let screen_x = ((self.v[x] as u16 + c) % 64) as usize;
                 if pixel == 1 {
                     if self.vmem[screen_y][screen_x] == 1 {
                         self.v[0xF] = 1;
@@ -403,7 +425,7 @@ impl Chip8 {
     ///
     /// The method skisps the next instruction if the key in v[X] is pressed
     fn skip_if_pressed(&mut self) {
-        if self.keys[((self.opcode & 0x0F00) >> 8) as usize] == 1 {
+        if self.keys[self.v[((self.opcode & 0x0F00) >> 8) as usize] as usize] {
             self.pc += 2;
         }
         self.pc += 2;
@@ -412,7 +434,7 @@ impl Chip8 {
     /// OPCODE: EXA1
     /// The method skisps the next instruction if the key in v[X] is not pressed
     fn skip_if_not_pressed(&mut self) {
-        if self.keys[((self.opcode & 0x0F00) >> 8) as usize] == 0 {
+        if !self.keys[self.v[((self.opcode & 0x0F00) >> 8) as usize] as usize] {
             self.pc += 2;
         }
         self.pc += 2;
@@ -496,12 +518,28 @@ impl Chip8 {
         self.pc += 2;
     }
     
-    pub fn dump_vmem_line(&self, line_number: usize) -> &[u8] {
-        self.vmem[line_number].as_slice()
+    pub fn set_keys(&mut self, keys: &Vec<bool>) {
+        self.keys = keys.clone();
+    }
+
+    pub fn set_key(&mut self, key: u8, status: bool) {
+        self.keys[key as usize] = status;
+    }
+
+    pub fn dump_vmem(&self) -> &Vec<Vec<u8>> {
+        &self.vmem
+    }
+
+    pub fn dump_vmem_line(&self, line: usize) -> &[u8] {
+        self.vmem[line].as_slice()
     }
 
     pub fn is_awaiting_redraw(&self) -> bool {
         self.redraw
+    }
+
+    pub fn get_redraw_section(&self) -> (usize, usize, usize, usize) {
+        self.redraw_section
     }
 
     pub fn fulfill_redraw(&mut self) {
