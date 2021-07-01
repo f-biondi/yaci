@@ -2,6 +2,7 @@ use std::fs;
 use rand::Rng;
 use std::process;
 use std::collections::VecDeque;
+use winit::event_loop::{ControlFlow, EventLoop};
 
 #[allow(dead_code)]
 pub struct Chip8 {
@@ -11,10 +12,10 @@ pub struct Chip8 {
     pc: u16,
     stack: VecDeque<u16>,
     mem: Vec<u8>,
-    vmem: Vec<Vec<u8>>,
-    redraw: bool,
-    redraw_section: (usize, usize, usize, usize),
     keys: Vec<bool>,
+    redraw: bool,
+    waiting_input: bool,
+    waiting_register: usize,
     delay_t: u8,
     sound_t: u8,
 }
@@ -28,10 +29,10 @@ impl Chip8 {
             pc: 0x200, //rom program starts at 0x200 memory address (512 in decimal)
             stack: VecDeque::with_capacity(16),
             mem: vec![0; 4096],
-            vmem: vec![vec![0; 64]; 32],
-            redraw: false,
-            redraw_section: (0, 0, 0, 0),
             keys: vec![false; 16],
+            redraw: false,
+            waiting_input: false,
+            waiting_register: 0,
             delay_t: 0,
             sound_t: 0,
         }
@@ -69,18 +70,24 @@ impl Chip8 {
 
     }
 
-    /// The method represent a cpu clock, it fetches the 2 byte opcode at pc
-    /// mem location and calls the decode_opcode() method to decode it, the
-    /// method then proceds decreasing the sound and delay timer by 1 if they have a value
-    /// greater than 0, if the sound timer have a non zero value a beep is reproduced.
-    pub fn clock(&mut self) {
-        self.opcode = (self.mem[self.pc as usize] as u16) << 8 | (self.mem[(self.pc+1) as usize] as u16);
-
-        self.decode_opcode(); 
-
+    pub fn cycle(&mut self, clock_count: u8, frame_buffer: &mut[u8]) {
+        for _ in 0..clock_count {
+            self.clock(frame_buffer);
+        }
+        self.timer_decrease();
     }
 
-    pub fn clock_timer(&mut self) {
+    fn event_handle(&mut self) {
+    }
+
+    /// The method represent a cpu clock, it fetches the 2 byte opcode at pc
+    /// mem location and calls the decode_opcode() method to decode it.
+    fn clock(&mut self, frame_buffer: &mut[u8]) {
+        self.opcode = (self.mem[self.pc as usize] as u16) << 8 | (self.mem[(self.pc+1) as usize] as u16);
+        self.decode_opcode(frame_buffer); 
+    }
+
+    fn timer_decrease(&mut self) {
         if self.delay_t > 0 {
             self.delay_t -= 1;
         }
@@ -91,10 +98,10 @@ impl Chip8 {
         }
     }
 
-    fn decode_opcode(&mut self) {
+    fn decode_opcode(&mut self, frame_buffer: &mut[u8]) {
         match self.opcode & 0xF000 {
             0x0000 => match self.opcode & 0x000F {
-                0x0 => self.screen_clear(),
+                0x0 => self.screen_clear(frame_buffer),
                 _ => self.subroutine_return(),
             },
             0x1000 => self.jump_to_address(),
@@ -119,14 +126,14 @@ impl Chip8 {
             0xA000 => self.set_i(),
             0xB000 => self.jump_to_v0_plus_nnn(),
             0xC000 => self.rand_and(),
-            0xD000 => self.draw(),
+            0xD000 => self.draw(frame_buffer),
             0xE000 => match self.opcode & 0x00FF {
                 0x9E => self.skip_if_pressed(),
                 _ => self.skip_if_not_pressed(),
             },
             0xF000 => match self.opcode & 0x00FF {
                 0x07 => self.set_vx_delay_t(),
-                0x0A => loop {},
+                0x0A => self.wait_input(),
                 0x15 => self.set_delay_t_vx(),
                 0x18 => self.set_sound_t_vx(),
                 0x1E => self.add_i_vx_no_carry(),
@@ -143,10 +150,11 @@ impl Chip8 {
     ///
     /// The method clears the screen by setting every byte in the vmem to 0 and setting the 
     /// redraw flag to true, the program counter is then incremented by 2
-    fn screen_clear(&mut self) {
-        self.vmem = vec![vec![0; 64]; 32];
-        self.redraw = true; 
-        self.redraw_section = (0, 0 , 32, 64);
+    fn screen_clear(&mut self, frame_buffer: &mut[u8]) {
+        self.redraw = true;
+        for i in 0..frame_buffer.len() {
+            frame_buffer[i] = 0x00;
+        }
         self.pc += 2;
     }
 
@@ -220,24 +228,8 @@ impl Chip8 {
     ///
     /// The method adds NN to v[X] without setting the carry flag
     fn add_vx_no_carry(&mut self) {
-        
-
         let x = ((self.opcode & 0x0F00) >> 8) as usize;
-        let nn = (self.opcode & 0x00FF) as u16;
-        if x == 0x8 {
-            //println!("start_v[8]: {:X}", self.v[x]);
-        }
-        if x == 0x8 {
-            //println!("nn: {:X}", nn);
-        }
-        /*
         self.v[x] = self.v[x].wrapping_add((self.opcode & 0x00FF) as u8);
-        */
-        self.v[x] = (self.v[x] as u16 + nn) as u8;
-        if x == 0x8 {
-            //println!("end_v[8]: {:X}", self.v[x]);
-            //println!("=======");
-        }
         self.pc += 2;
     }
 
@@ -395,30 +387,45 @@ impl Chip8 {
     /// The method draws a sprite at the coordinates v[X], v[Y], the sprite has a width of 8 pixels
     /// and an height of N+1 pixels, sprite data is read from i address onwards V[0xF] is set if a
     /// pixels is unset during the operation.   
-    fn draw(&mut self) {
+    fn draw(&mut self, frame_buffer: &mut[u8]) {
+        self.redraw = true;
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
         let height : u16 = (self.opcode & 0x000F) as u16;
         self.v[0xF] = 0;
-        self.redraw = true;
-        self.redraw_section = (self.v[y] as usize, self.v[x] as usize, height as usize, 8);
-       
+
         for l in 0..height {
             let line_pixels = self.mem[(self.i + l as u16) as usize];
             for c in 0u16..8u16 {
                 let pixel = (line_pixels & (0x80 / u8::pow(2, c as u32))) >> 7 - c;
-                let screen_y = ((self.v[y] as u16 + l) % 32) as usize;
-                let screen_x = ((self.v[x] as u16 + c) % 64) as usize;
                 if pixel == 1 {
-                    if self.vmem[screen_y][screen_x] == 1 {
+                    let screen_x = ((self.v[y] as u16 + l) % 32) as usize;
+                    let screen_y = ((self.v[x] as u16 + c) % 64) as usize;
+                    if Chip8::draw_pixel(frame_buffer, screen_x, screen_y) {
                         self.v[0xF] = 1;
                     }
-                    self.vmem[screen_y][screen_x] ^= pixel;
                 }
             }
         }
 
         self.pc += 2;
+    }
+
+    fn draw_pixel(frame_buffer: &mut[u8], x: usize, y: usize) -> bool {
+        let index = (64 as usize) * (x * 4) + (y * 4);
+
+        let color = if frame_buffer[index] == 0xff {
+            0x00
+        } else {
+            0xff
+        };
+
+        for i in 0..4 {
+            frame_buffer[index+i] = color;
+        }
+
+        color != 0xff
+
     }
 
     /// OPCODE: EX9E
@@ -448,7 +455,14 @@ impl Chip8 {
         self.pc += 2;
     }
 
-    //todo
+    /// OPCODE: FX0A
+    ///
+    /// The method waits an input and stores it in v[X]
+    fn wait_input(&mut self){
+        let x = ((self.opcode & 0x0F00) >> 8) as usize;
+        self.waiting_input = true; 
+        self.waiting_register = x; 
+    }
 
     /// OPCODE: FX15
     ///
@@ -495,7 +509,7 @@ impl Chip8 {
         self.mem[(self.i + 2) as usize] = (self.v[x] % 100) % 10;
         self.pc += 2;
     }
-    
+
     /// OPCODE: FX55
     ///
     /// The method stores the values of the registers from v[0] to v[x] from mem[i] onwards
@@ -506,7 +520,7 @@ impl Chip8 {
         }
         self.pc += 2;
     }
-    
+
     /// OPCODE: FX65
     ///
     /// The method fills the registers from v[0] to v[X] with values from mem[i] onwards
@@ -517,32 +531,21 @@ impl Chip8 {
         }
         self.pc += 2;
     }
-    
-    pub fn set_keys(&mut self, keys: &Vec<bool>) {
-        self.keys = keys.clone();
-    }
 
     pub fn set_key(&mut self, key: u8, status: bool) {
         self.keys[key as usize] = status;
+        if self.waiting_input && status {
+            self.waiting_input = false;
+            self.v[self.waiting_register] = key;
+            self.pc += 2;
+        }
     }
 
-    pub fn dump_vmem(&self) -> &Vec<Vec<u8>> {
-        &self.vmem
-    }
-
-    pub fn dump_vmem_line(&self, line: usize) -> &[u8] {
-        self.vmem[line].as_slice()
-    }
-
-    pub fn is_awaiting_redraw(&self) -> bool {
+    pub fn awaiting_redraw(&self) -> bool {
         self.redraw
     }
 
-    pub fn get_redraw_section(&self) -> (usize, usize, usize, usize) {
-        self.redraw_section
-    }
-
     pub fn fulfill_redraw(&mut self) {
-        self.redraw = false;
+        self.redraw = true;
     }
 }
