@@ -2,7 +2,6 @@ use std::fs;
 use rand::Rng;
 use std::process;
 use std::collections::VecDeque;
-use winit::event_loop::{ControlFlow, EventLoop};
 
 #[allow(dead_code)]
 pub struct Chip8 {
@@ -75,9 +74,6 @@ impl Chip8 {
             self.clock(frame_buffer);
         }
         self.timer_decrease();
-    }
-
-    fn event_handle(&mut self) {
     }
 
     /// The method represent a cpu clock, it fetches the 2 byte opcode at pc

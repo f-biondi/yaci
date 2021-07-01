@@ -1,11 +1,11 @@
 use std::env;
 use std::time::{Duration};
 use std::thread::sleep;
-use winit::event::{Event, VirtualKeyCode};
+use winit::event::{VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit_input_helper::WinitInputHelper;
-use winit::window::{Window, WindowBuilder};
-use pixels::{Error, Pixels, SurfaceTexture};
+use winit::window::{WindowBuilder};
+use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 
 mod chip8;
