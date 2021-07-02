@@ -268,13 +268,12 @@ impl Chip8 {
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
 
-
-        if self.v[x] > (0xFF - self.v[y]) {
-            self.v[0xF] = 1;
+        self.v[0xF] = if self.v[x] > (0xFF - self.v[y]) {
+            1
         }
         else {
-            self.v[0xF] = 0;
-        }
+            0
+        };
 
         self.v[x] = self.v[x].wrapping_add(self.v[y]);
         self.pc += 2;
@@ -287,12 +286,13 @@ impl Chip8 {
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
 
-        if self.v[x] < self.v[y] {
-            self.v[0xF] = 0;
+        self.v[0xF] = if self.v[x] < self.v[y] {
+            0
         }
         else {
-            self.v[0xF] = 1;
-        }
+            1
+        };
+
         self.v[x] = self.v[x].wrapping_sub(self.v[y]);
         self.pc += 2;
     }
@@ -318,12 +318,12 @@ impl Chip8 {
         let x : usize = ((self.opcode & 0x0F00) >> 8) as usize;
         let y : usize = ((self.opcode & 0x00F0) >> 4) as usize;
 
-        if self.v[y] < self.v[x] {
-            self.v[0xF] = 0;
+        self.v[0xF] = if self.v[y] < self.v[x] {
+            0
         }
         else {
-            self.v[0xF] = 1;
-        }
+            1
+        };
 
         self.v[x] = self.v[y].wrapping_sub(self.v[x]);
         self.pc += 2;

@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_title("YACI")
             .with_inner_size(size)
             .with_min_inner_size(size)
+            .with_resizable(false)
             .build(&event_loop)?
     };
 
