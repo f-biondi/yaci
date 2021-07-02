@@ -426,7 +426,7 @@ impl Chip8 {
 
     /// OPCODE: EX9E
     ///
-    /// The method skisps the next instruction if the key in v[X] is pressed
+    /// The method skips the next instruction if the key in v[X] is pressed
     fn skip_if_pressed(&mut self) {
         if self.keys[self.v[((self.opcode & 0x0F00) >> 8) as usize] as usize] {
             self.pc += 2;
@@ -435,7 +435,7 @@ impl Chip8 {
     }
 
     /// OPCODE: EXA1
-    /// The method skisps the next instruction if the key in v[X] is not pressed
+    /// The method skips the next instruction if the key in v[X] is not pressed
     fn skip_if_not_pressed(&mut self) {
         if !self.keys[self.v[((self.opcode & 0x0F00) >> 8) as usize] as usize] {
             self.pc += 2;
