@@ -144,7 +144,7 @@ impl Chip8 {
 
     /// OPCODE: 00E0
     ///
-    /// The method clears the screen by setting every byte in the vmem to 0 and setting the 
+    /// The method clears the screen by setting every byte in the frame_buffer to 0 and setting the 
     /// redraw flag to true, the program counter is then incremented by 2
     fn screen_clear(&mut self, frame_buffer: &mut[u8]) {
         self.redraw = true;
