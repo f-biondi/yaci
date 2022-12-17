@@ -1,4 +1,4 @@
-# YACI (Yet Another Chip-8 Interpreter)
+# YACI (Yet Another Chip-8 Interpreter/Emulator)
 
 ![Space Invaders Gameplay on YACI](gameplay.gif)
 
